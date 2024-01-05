@@ -19,8 +19,9 @@ struct TweetRecord {
 
 fn main() {
     let mut tweet_map: HashMap<u64, u32> = HashMap::new();
+    let inpath = "tweets/2023-03-14.gz";
 
-    let file = File::open("tweets/2023-03-14.gz").unwrap();
+    let file = File::open(inpath).unwrap();
     let reader = BufReader::new(MultiGzDecoder::new(file));
 
     let bar = ProgressBar::new(9000000);
@@ -61,7 +62,8 @@ fn main() {
     }
     bar.finish();
 
-    let mut writer = Writer::from_path("/media/bmazoyer/tweets/2023-03-14_unique_ids.csv").unwrap();
+    let outpath = inpath.replace(".gz", "_unique_ids.csv");
+    let mut writer = Writer::from_path(outpath).unwrap();
     let bar = ProgressBar::new(tweet_map.len().try_into().unwrap());
     bar.set_style(
         ProgressStyle::with_template(
