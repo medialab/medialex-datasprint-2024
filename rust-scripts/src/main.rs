@@ -60,7 +60,8 @@ fn main() {
                 .or_insert(tweet_record.ts);
         }
     }
-    bar.finish();
+    // Leave the current progress
+    bar.abandon();
 
     let outpath = inpath.replace(".gz", "_unique_ids.csv");
     let mut writer = Writer::from_path(outpath).unwrap();
