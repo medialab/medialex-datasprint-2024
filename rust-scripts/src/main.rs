@@ -1,14 +1,15 @@
-extern crate flate2;
-
 use csv::Writer;
 use flate2::read::MultiGzDecoder;
-use indicatif::{ProgressBar, ProgressStyle};
+use glob::glob;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize)]
 struct TweetRecord {
@@ -17,20 +18,25 @@ struct TweetRecord {
     tweet: Map<String, Value>,
 }
 
-fn main() {
+const BAR_TEMPLATE: &str =
+    "{bar:40.cyan/blue} {pos:>7}/{len:7} ETA: [{eta_precise}] {msg}";
+
+fn deduplicate_file(inpath: &PathBuf, multibar: &MultiProgress) {
     let mut tweet_map: HashMap<u64, u32> = HashMap::new();
-    let inpath = "tweets/2023-03-14.gz";
 
     let file = File::open(inpath).unwrap();
     let reader = BufReader::new(MultiGzDecoder::new(file));
 
-    let bar = ProgressBar::new(9000000);
+    let bar = ProgressBar::new(9_000_000);
     bar.set_style(
-        ProgressStyle::with_template(
-            "Read file: [{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} [{eta_precise}]",
-        )
+        ProgressStyle::with_template(&format!(
+            "{} {}",
+            inpath.file_name().unwrap().to_str().unwrap(),
+            BAR_TEMPLATE
+        ))
         .unwrap(),
     );
+    multibar.add(bar.clone());
     for line in reader.lines() {
         bar.inc(1);
 
@@ -63,21 +69,25 @@ fn main() {
     // Leave the current progress
     bar.abandon();
 
-    let outpath = inpath.replace(".gz", "_unique_ids.csv");
+    let outpath = inpath.to_str().unwrap().replace(".gz", "_unique_ids.csv");
     let mut writer = Writer::from_path(outpath).unwrap();
-    let bar = ProgressBar::new(tweet_map.len().try_into().unwrap());
-    bar.set_style(
-        ProgressStyle::with_template(
-            "Write file: [{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} [{eta_precise}]",
-        )
-        .unwrap(),
-    );
     writer.write_record(&["id", "last_timestamp"]).unwrap();
     for (key, item) in tweet_map {
         writer
             .write_record(&[key.to_string(), item.to_string()])
             .unwrap();
-        bar.inc(1);
     }
-    bar.finish()
+}
+
+fn main() {
+    let multibar = MultiProgress::new();
+    let files: Vec<_> = glob("tweets/202*.gz")
+        .unwrap()
+        .filter_map(|x| x.ok())
+        .collect();
+
+    let _res: Vec<_> = files
+        .par_iter()
+        .map(|path| deduplicate_file(path, &multibar))
+        .collect();
 }
